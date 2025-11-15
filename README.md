@@ -59,88 +59,79 @@ vendingState.clickOnInsertCoinButton(vendingMachine);
 // State changes from IdleState to HasMoneyState
 ```
 
-### 2. Strategy Pattern (Potential Application)
+**State Transitions**:
+```
+IdleState → HasMoneyState (insert coins)
+HasMoneyState → SelectionState (select product)
+SelectionState → DispenseState (valid payment)
+SelectionState → IdleState (insufficient payment/refund)
+DispenseState → IdleState (product dispensed)
+```
+
+### 2. Strategy Pattern (Potential Enhancement)
 **Where it could be applied**: Payment processing and change calculation
 
-**Current Implementation Pain Points**:
+**Current Implementation Limitations**:
 - Change calculation is hardcoded in `SelectionState.getChange()`
 - Only supports coin-based payment
 - Cannot easily add card payment, mobile payment, etc.
+- Change return logic is simplified (just returns amount, not actual coins)
 
-**How Strategy Pattern would help**:
+**How Strategy Pattern would improve the design**:
 ```java
 interface PaymentStrategy {
     boolean processPayment(int amount);
-    int calculateChange(int paid, int price);
+    List<Coin> calculateChange(int paid, int price);
     void refund();
 }
 
 // Different strategies for different payment types
-class CoinPaymentStrategy implements PaymentStrategy { }
-class CardPaymentStrategy implements PaymentStrategy { }
-class DigitalWalletStrategy implements PaymentStrategy { }
+class CoinPaymentStrategy implements PaymentStrategy {
+    private List<Coin> insertedCoins;
+    
+    public List<Coin> calculateChange(int paid, int price) {
+        // Algorithm to return optimal coin combination
+        // e.g., for 18 cents: [DIME, NICKEL, PENNY, PENNY, PENNY]
+    }
+}
+
+class CardPaymentStrategy implements PaymentStrategy {
+    private String cardNumber;
+    // No change calculation needed for cards
+}
+
+class MobilePaymentStrategy implements PaymentStrategy {
+    private String walletId;
+    // Digital payment, no physical change
+}
 ```
 
 **Benefits**:
 - Swap payment algorithms at runtime
-- Add new payment methods without changing VendingMachine
-- Each strategy independently testable
+- Add new payment methods without changing VendingMachine or State classes
+- Each strategy is independently testable
+- Change calculation can use different algorithms (greedy, dynamic programming, etc.)
 
-### 3. Chain of Responsibility Pattern (Potential Application)
-**Where it could be applied**: Product selection validation
-
-**Current Implementation**:
-- `SelectionState.chooseProduct()` does multiple validations sequentially
-- Tightly coupled validation logic
-
-**How Chain of Responsibility would help**:
+**Usage Example**:
 ```java
-abstract class ValidationHandler {
-    protected ValidationHandler next;
+class VendingMachine {
+    private PaymentStrategy paymentStrategy;
     
-    public void setNext(ValidationHandler handler) {
-        this.next = handler;
-    }
-    
-    public abstract boolean validate(VendingMachine machine, int code);
-}
-
-// Chain: CodeValidator -> StockValidator -> PaymentValidator
-class CodeValidator extends ValidationHandler {
-    public boolean validate(VendingMachine machine, int code) {
-        // Check if code exists in inventory
-        if (valid) return next == null || next.validate(machine, code);
-        return false;
+    public void setPaymentStrategy(PaymentStrategy strategy) {
+        this.paymentStrategy = strategy;
     }
 }
 
-class StockValidator extends ValidationHandler {
-    public boolean validate(VendingMachine machine, int code) {
-        // Check if item is in stock
-        if (inStock) return next == null || next.validate(machine, code);
-        return false;
-    }
-}
-
-class PaymentValidator extends ValidationHandler {
-    public boolean validate(VendingMachine machine, int code) {
-        // Check if payment is sufficient
-        return sufficientPayment;
-    }
-}
+// Client can choose strategy
+vendingMachine.setPaymentStrategy(new CoinPaymentStrategy());
+// or
+vendingMachine.setPaymentStrategy(new CardPaymentStrategy());
 ```
-
-**Benefits**:
-- Decouple validation logic into separate handlers
-- Add/remove validation steps dynamically
-- Each handler has single responsibility
-- Easy to reorder validation sequence
 
 ## UML Class Diagram
 
 ```mermaid
 classDiagram
-    %% Main Context Class
     class VendingMachine {
         -State vendingMachineState
         -Inventory inventory
@@ -154,7 +145,6 @@ classDiagram
         +setCoinList(List~Coin~) void
     }
 
-    %% State Pattern - Abstract State
     class State {
         <<abstract>>
         +clickOnInsertCoinButton(VendingMachine) void
@@ -167,7 +157,6 @@ classDiagram
         +updateInventory(VendingMachine, Item, int) void
     }
 
-    %% Concrete State Classes
     class IdleState {
         +IdleState()
         +IdleState(VendingMachine)
@@ -194,7 +183,6 @@ classDiagram
         +dispenseProduct(VendingMachine, int) Item
     }
 
-    %% Inventory Management Classes
     class Inventory {
         -ItemShelf[] inventory
         +Inventory(int)
@@ -227,7 +215,6 @@ classDiagram
         +setPrice(int) void
     }
 
-    %% Enumerations
     class ItemType {
         <<enumeration>>
         COKE
@@ -238,101 +225,43 @@ classDiagram
 
     class Coin {
         <<enumeration>>
-        PENNY : 1
-        NICKEL : 5
-        DIME : 10
-        QUARTER : 25
+        PENNY
+        NICKEL
+        DIME
+        QUARTER
         +int value
     }
 
-    %% Demo/Main Class
-    class VendingMachineAppDemo {
-        <<main>>
-        +main(String[])$ void
-        -fillUpInventory(VendingMachine)$ void
-        -displayInventory(VendingMachine)$ void
-    }
-
-    %% State Pattern Relationships
-    State <|-- IdleState : extends
-    State <|-- HasMoneyState : extends
-    State <|-- SelectionState : extends
-    State <|-- DispenseState : extends
-    
-    %% Composition and Aggregation
-    VendingMachine *-- "1" State : contains
-    VendingMachine *-- "1" Inventory : contains
-    VendingMachine o-- "0..*" Coin : aggregates
-    
-    %% Inventory Relationships
-    Inventory *-- "10" ItemShelf : contains array
-    ItemShelf o-- "0..1" Item : contains
-    Item --> ItemType : uses
-    
-    %% Demo Relationships
-    VendingMachineAppDemo ..> VendingMachine : creates/uses
-    VendingMachineAppDemo ..> State : uses
-    VendingMachineAppDemo ..> Coin : uses
-    VendingMachineAppDemo ..> Item : uses
-    VendingMachineAppDemo ..> ItemShelf : uses
-    VendingMachineAppDemo ..> ItemType : uses
-
-    %% State transitions (shown as dependencies)
-    IdleState ..> HasMoneyState : transitions to
-    HasMoneyState ..> SelectionState : transitions to
-    HasMoneyState ..> IdleState : transitions to
-    SelectionState ..> DispenseState : transitions to
-    SelectionState ..> IdleState : transitions to
-    DispenseState ..> IdleState : transitions to
-
-    %% Notes
-    note for State "State Pattern Context:\nDefines interface for all states\nDefault implementations do nothing"
-    note for VendingMachine "Maintains current state,\ninventory, and coin list"
-    note for Inventory "Manages 10 ItemShelves\nwith codes 101-110"
+    State <|-- IdleState
+    State <|-- HasMoneyState
+    State <|-- SelectionState
+    State <|-- DispenseState
+    VendingMachine *-- State
+    VendingMachine *-- Inventory
+    VendingMachine o-- Coin
+    Inventory *-- ItemShelf
+    ItemShelf o-- Item
+    Item --> ItemType
+    IdleState ..> HasMoneyState
+    HasMoneyState ..> SelectionState
+    HasMoneyState ..> IdleState
+    SelectionState ..> DispenseState
+    SelectionState ..> IdleState
+    DispenseState ..> IdleState
 ```
 
 ## State Transition Diagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> IdleState: VendingMachine created
-
+    [*] --> IdleState
     IdleState --> HasMoneyState: clickOnInsertCoinButton()
-    IdleState --> IdleState: updateInventory()
-    
-    HasMoneyState --> HasMoneyState: insertCoin(coin)
+    HasMoneyState --> HasMoneyState: insertCoin()
     HasMoneyState --> SelectionState: clickOnStartProductSelectionButton()
     HasMoneyState --> IdleState: refundFullMoney()
-    
-    SelectionState --> DispenseState: chooseProduct()\n[sufficient payment]
-    SelectionState --> IdleState: chooseProduct()\n[insufficient payment]
-    SelectionState --> IdleState: refundFullMoney()
-    
-    DispenseState --> IdleState: dispenseProduct()\n[auto-transition]
-    
-    note right of IdleState
-        Initial state
-        Coin list is empty
-        Ready for transactions
-    end note
-    
-    note right of HasMoneyState
-        Coins inserted
-        Can add more coins
-        Can proceed or refund
-    end note
-    
-    note right of SelectionState
-        Validates payment
-        Calculates change
-        Checks item availability
-    end note
-    
-    note right of DispenseState
-        Auto-executes dispensing
-        Updates inventory
-        Returns to idle
-    end note
+    SelectionState --> DispenseState: chooseProduct() [sufficient payment]
+    SelectionState --> IdleState: chooseProduct() [insufficient payment]
+    DispenseState --> IdleState: dispenseProduct()
 ```
 
 ## Sequence Diagram - Successful Purchase Flow
@@ -340,110 +269,44 @@ stateDiagram-v2
 ```mermaid
 sequenceDiagram
     participant User
-    participant Demo as VendingMachineAppDemo
     participant VM as VendingMachine
     participant IS as IdleState
     participant HMS as HasMoneyState
     participant SS as SelectionState
     participant DS as DispenseState
     participant Inv as Inventory
-    participant Shelf as ItemShelf
 
-    Demo->>VM: new VendingMachine()
-    VM->>IS: new IdleState()
-    VM->>Inv: new Inventory(10)
-    Inv->>Shelf: create 10 ItemShelves (101-110)
-
-    Demo->>Demo: fillUpInventory(VM)
-    Demo->>Inv: addItem(Item, code)
-    
-    User->>Demo: Start transaction
-    Demo->>VM: getVendingMachineState()
-    VM-->>Demo: IdleState
-    Demo->>IS: clickOnInsertCoinButton(VM)
+    User->>VM: clickOnInsertCoinButton()
+    VM->>IS: clickOnInsertCoinButton()
     IS->>VM: setVendingMachineState(HasMoneyState)
     
-    Demo->>VM: getVendingMachineState()
-    VM-->>Demo: HasMoneyState
-    Demo->>HMS: insertCoin(VM, NICKEL)
-    HMS->>VM: getCoinList().add(NICKEL)
-    Demo->>HMS: insertCoin(VM, QUARTER)
-    HMS->>VM: getCoinList().add(QUARTER)
+    User->>VM: insertCoin(NICKEL)
+    VM->>HMS: insertCoin(NICKEL)
+    HMS->>VM: coinList.add(NICKEL)
+    
+    User->>VM: insertCoin(QUARTER)
+    VM->>HMS: insertCoin(QUARTER)
+    HMS->>VM: coinList.add(QUARTER)
     Note over VM: Total: 30 cents
     
-    Demo->>HMS: clickOnStartProductSelectionButton(VM)
+    User->>VM: clickOnStartProductSelectionButton()
+    VM->>HMS: clickOnStartProductSelectionButton()
     HMS->>VM: setVendingMachineState(SelectionState)
     
-    Demo->>VM: getVendingMachineState()
-    VM-->>Demo: SelectionState
-    Demo->>SS: chooseProduct(VM, 102)
+    User->>VM: chooseProduct(102)
+    VM->>SS: chooseProduct(102)
     SS->>Inv: getItem(102)
-    Inv->>Shelf: find shelf with code 102
-    Shelf-->>Inv: Item (COKE, $12)
-    Inv-->>SS: Item
-    
-    SS->>SS: Calculate total paid (30)
-    SS->>SS: Check: 30 >= 12 ✓
-    SS->>SS: Calculate change: 30 - 12 = 18
+    Inv-->>SS: Item(COKE, 12)
+    SS->>SS: validate payment (30 >= 12)
+    SS->>SS: calculate change (18)
     SS->>SS: getChange(18)
-    Note over SS: Print: "Returned change: 18"
+    SS->>VM: setVendingMachineState(DispenseState)
     
-    SS->>DS: new DispenseState(VM, 102)
-    DS->>DS: dispenseProduct(VM, 102)
+    VM->>DS: DispenseState(VM, 102)
     DS->>Inv: getItem(102)
-    Inv-->>DS: Item
     DS->>Inv: updateSoldOutItem(102)
-    Inv->>Shelf: setSoldOut(true)
-    Note over DS: Print: "Product dispensed"
-    
-    DS->>IS: new IdleState(VM)
-    IS->>VM: setCoinList(new ArrayList())
-    Note over VM: Reset for next transaction
-    
-    Demo->>Demo: displayInventory(VM)
-    Note over User: Transaction complete!
-```
-
-## Sequence Diagram - Insufficient Payment Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Demo as VendingMachineAppDemo
-    participant VM as VendingMachine
-    participant HMS as HasMoneyState
-    participant SS as SelectionState
-    participant IS as IdleState
-    participant Inv as Inventory
-
-    Note over VM: Already in HasMoneyState
-    Note over VM: Only 5 cents inserted
-    
-    Demo->>HMS: clickOnStartProductSelectionButton(VM)
-    HMS->>VM: setVendingMachineState(SelectionState)
-    
-    Demo->>SS: chooseProduct(VM, 102)
-    SS->>Inv: getItem(102)
-    Inv-->>SS: Item (COKE, price: 12)
-    
-    SS->>VM: getCoinList()
-    VM-->>SS: [NICKEL]
-    SS->>SS: Calculate: paidByUser = 5
-    SS->>SS: Check: 5 < 12 ✗
-    
-    Note over SS: Insufficient payment!
-    SS->>SS: Print: "Insufficient Amount..."
-    SS->>SS: refundFullMoney(VM)
-    SS->>VM: setVendingMachineState(IdleState)
-    SS->>VM: getCoinList()
-    VM-->>SS: [NICKEL]
-    Note over SS: Print: "Returned full amount"
-    
-    SS-->>Demo: throw Exception("insufficient amount")
-    Demo->>Demo: catch Exception
-    Demo->>Demo: displayInventory(VM)
-    
-    Note over User: Transaction cancelled,<br/>coins refunded
+    DS->>VM: setVendingMachineState(IdleState)
+    Note over User: Product dispensed!
 ```
 
 ## Class Responsibilities
@@ -455,7 +318,6 @@ sequenceDiagram
   - Manage inventory
   - Track inserted coins
   - Delegate operations to current state
-- **Key Methods**: State management, inventory access, coin list management
 
 ### State (Abstract)
 - **Purpose**: Define interface for all possible operations
@@ -463,7 +325,6 @@ sequenceDiagram
   - Declare all state-specific operations
   - Provide default implementations (do nothing)
   - Allow subclasses to override only relevant methods
-- **Pattern Role**: State interface in State Pattern
 
 ### IdleState
 - **Purpose**: Initial waiting state
@@ -479,7 +340,6 @@ sequenceDiagram
   - Accept additional coins
   - Transition to SelectionState
   - Handle refund requests
-  - Accumulate payment
 - **Valid Operations**: `insertCoin()`, `clickOnStartProductSelectionButton()`, `refundFullMoney()`
 
 ### SelectionState
@@ -490,7 +350,6 @@ sequenceDiagram
   - Verify sufficient payment
   - Calculate and return change
   - Handle insufficient payment with refund
-  - Transition to DispenseState or IdleState
 - **Valid Operations**: `chooseProduct()`, `getChange()`, `refundFullMoney()`
 
 ### DispenseState
@@ -509,8 +368,6 @@ sequenceDiagram
   - Add items to shelves
   - Retrieve items by code
   - Update sold-out status
-  - Validate item availability
-- **Key Feature**: Array-based storage with code mapping
 
 ### ItemShelf
 - **Purpose**: Represent single storage location
@@ -518,33 +375,20 @@ sequenceDiagram
   - Store unique code (101-110)
   - Hold item reference
   - Track availability status
-- **Data Structure**: Container for Item with metadata
 
 ### Item
 - **Purpose**: Represent vendable product
 - **Responsibilities**:
   - Store product type
   - Store product price
-- **Simple Data**: POJO with type and price
 
 ### ItemType (Enum)
 - **Purpose**: Define available product types
 - **Values**: COKE, PEPSI, JUICE, SODA
-- **Usage**: Type-safe product categorization
 
 ### Coin (Enum)
 - **Purpose**: Define coin denominations
 - **Values**: PENNY(1), NICKEL(5), DIME(10), QUARTER(25)
-- **Usage**: Payment calculation with cent values
-
-### VendingMachineAppDemo
-- **Purpose**: Demonstrate system usage
-- **Responsibilities**:
-  - Initialize vending machine
-  - Fill inventory with sample products
-  - Simulate user interactions
-  - Display inventory status
-  - Handle exceptions
 
 ## Key Design Insights
 
@@ -556,23 +400,17 @@ sequenceDiagram
 5. **Clear Separation**: Inventory, payment, and state logic are decoupled
 
 ### Current Limitations
-1. **No change calculation algorithm**: Just returns amount, doesn't break into coins
+1. **Simplified change calculation**: Just returns amount, doesn't break into coins
 2. **No concurrent transaction support**: Single-threaded design
 3. **Limited error handling**: Generic exceptions without specific types
 4. **No persistence**: All data lost when application ends
 5. **Hard-coded inventory**: 10 items, codes 101-110
 
 ### Potential Enhancements with Strategy Pattern
-- **Payment Processing**: Different payment methods (coins, cards, mobile)
-- **Change Calculation**: Optimal coin selection algorithms
-- **Pricing Strategies**: Dynamic pricing, discounts, promotions
-- **Inventory Restocking**: Different restocking algorithms
-
-### Potential Enhancements with Chain of Responsibility
-- **Validation Pipeline**: Code → Availability → Payment → Expiry checks
-- **Error Handling**: Multiple error handlers in sequence
-- **Logging Chain**: Multiple loggers (console, file, remote)
-- **Authorization Chain**: Role-based access for maintenance operations
+1. **Payment Processing**: Different payment methods (coins, cards, mobile wallets)
+2. **Change Calculation**: Optimal coin selection algorithms (greedy, dynamic programming)
+3. **Pricing Strategies**: Dynamic pricing, discounts, promotions, time-based pricing
+4. **Inventory Restocking**: Different restocking strategies (FIFO, LIFO, priority-based)
 
 ## Testing Scenarios
 
@@ -594,4 +432,4 @@ sequenceDiagram
 
 ## Conclusion
 
-This vending machine implementation demonstrates the **State Pattern** effectively, providing a clean and maintainable solution for managing state-dependent behavior. The architecture is ready for enhancement with **Strategy Pattern** for payment processing and **Chain of Responsibility** for validation pipelines, making it a solid foundation for a production system.
+This vending machine implementation effectively demonstrates the **State Pattern**, providing a clean and maintainable solution for managing state-dependent behavior. The architecture could be enhanced with the **Strategy Pattern** for flexible payment processing and change calculation algorithms, making it a solid foundation for a production system.
